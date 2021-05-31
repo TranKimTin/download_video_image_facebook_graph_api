@@ -14,11 +14,13 @@ async function main() {
     listToken = listToken.split('\n').map(item => item.trim()).filter(item => item);
 
     let choose = 0;
-    while (isNaN(choose) || choose <= 0 || choose > 4) {
-        console.log(`1: Download image post + tag`);
-        console.log(`2: Download image post + tag + share`);
-        console.log(`3: Download videos post`);
-        console.log(`4: Download videos post + tag + share`);
+    while (isNaN(choose) || choose <= 0 || choose > 6) {
+        console.log(`1: Download image post + tag           (720)`);
+        console.log(`2: Download image post + tag + share   (720)`);
+        console.log(`3: Download image post + tag           (full HD)`);
+        console.log(`4: Download image post + tag + share   (full HD)`);
+        console.log(`5: Download videos post`);
+        console.log(`6: Download videos post + tag + share`);
         choose = await input("choose: ");
         choose *= 1;
     }
@@ -41,14 +43,14 @@ async function task(id, choose) {
         let { type, name } = await getTypeOfId(id);
         console.log(`${type} ${name}`)
         let node;
-        if (choose == 1 || choose == 2) node = await getPhotos(id, type);
-        if (choose == 3 || choose == 4) node = await getVideos(id, type);
+        if (choose == 1 || choose == 2 || choose == 3 || choose == 4) node = await getPhotos(id, type);
+        if (choose == 5 || choose == 6) node = await getVideos(id, type);
         data = node.data || [];
         paging = node.paging || {};
         while (paging && paging.next) {
             for (let item of data) {
                 try {
-                    if (choose == 1 || choose == 2) {
+                    if (choose == 1 || choose == 2 || choose == 3 || choose == 4) {
                         if (!item.attachments) continue;
                         if (type == 'user' && !item.link) continue;
                         if (type == 'user' && (!item.link.includes(id) && !item.link.includes('https://www.facebook.com/photo.php'))) continue;
@@ -56,24 +58,29 @@ async function task(id, choose) {
                             if (!attach.media_type) continue;
                             if (attach.media_type != 'photo' && attach.media_type != 'album') continue;
                             if (attach.media_type == 'photo') {
-                                await downloadImage(attach.media.image.src, attach.target.id, id, name);
+                                let url = attach.media.image.src;
+                                if (choose == 3 || choose == 4) url = await getUrlImage(attach.target.id);
+                                await downloadImage(url, attach.target.id, id, name);
                                 success++;
                                 console.log(`${id}\t\tSUCCESS: ${success}\tFAIL: ${fail}\t\t${name}`);
                             }
                             if (attach.media_type == 'album') {
                                 if (!attach.subattachments) continue;
                                 for (let subAttach of attach.subattachments.data) {
-                                    await downloadImage(subAttach.media.image.src, subAttach.target.id, id, name);
+                                    if(subAttach.type != 'photo') continue;
+                                    let url = subAttach.media.image.src;
+                                    if(choose == 3 || choose == 4) url = await getUrlImage(subAttach.target.id);
+                                    await downloadImage(url, subAttach.target.id, id, name);
                                     success++;
                                     console.log(`${id}\t\tSUCCESS: ${success}\tFAIL: ${fail}\t\t${name}`);
                                 }
                             }
                         }
                     }
-                    if (choose == 3 || choose == 4) {
+                    if (choose == 5 || choose == 6) {
                         if (item.type && item.type != 'video') continue;
-                        if (choose == 3 && type == 'user' && !item.link) continue;
-                        if (choose == 3 && type == 'user' && !item.link.includes(id)) continue;
+                        if (choose == 5 && type == 'user' && !item.link) continue;
+                        if (choose == 5 && type == 'user' && !item.link.includes(id)) continue;
                         if (!item.source && !item.object_id) continue;
                         if (!item.source) item.source = await getSource(item.object_id);
                         // console.log(item.source);
@@ -141,7 +148,7 @@ async function getVideos(id, type) {
 
 async function getNext(url) {
     let token = randomToken();
-    url = url.replace(/(access_token=).*?(&)/,'$1' + token + '$2');
+    url = url.replace(/(access_token=).*?(&)/, '$1' + token + '$2');
     return await axios.get(url).then(res => res.data);
 }
 
@@ -149,6 +156,14 @@ async function getSource(id) {
     let token = randomToken();
     let url = `https://graph.facebook.com/v10.0/${id}/?fields=source&access_token=${token}`;
     return await axios.get(url).then(res => res.data).then(data => data.source);
+}
+
+async function getUrlImage(id) {
+    let token = randomToken();
+    let url = `https://graph.facebook.com/v10.0/${id}/?fields=images&access_token=${token}`;
+    let data = await axios.get(url).then(res => res.data).then(data => data.images);
+    data.sort((a, b) => b.height - a.height);
+    return data[0].source;
 }
 
 async function downloadVideo(url, filename, id, name) {
@@ -191,7 +206,7 @@ function input(str) {
     });
 }
 
-function randomToken(){
+function randomToken() {
     let rd = Math.floor(Math.random() * 10000) % listToken.length;
     return listToken[rd];
 }
